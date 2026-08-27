@@ -1,0 +1,52 @@
+{
+  "pkgId": "celso.modcontrolcenter",
+  "name": "泰拉 MOD 控制中心 (ImGui EGL Test)",
+  "author": "liuxin",
+  "version": "0.1.3",
+  "versionCode": 202608283,
+  "brieflyDescribe": "Dear ImGui 控制中心第一阶段测试：直接在 Android eglSwapBuffers 前绘制，仅验证小型 MOD 按钮、触控与配置保存。",
+  "description": "独立 MOD 控制中心测试版。使用 Dear ImGui + OpenGL ES 兼容渲染，并通过 ShadowHook 直接拦截 Android 最终 eglSwapBuffers。平时只显示顶部中间的小型 MOD 按钮，点击后展开总开关测试面板；不修改 Terraria 游戏数值。",
+  "features": [],
+  "sizeCategory": "SMALL",
+  "targetGameVersion": "1.4.5.6.4",
+  "minGameVersion": "1.4.5.6.4",
+  "maxGameVersion": "1.4.5.6.4",
+  "support": {
+    "android": {
+      "arm64": true,
+      "arm": false,
+      "x64": false,
+      "x86": false
+    },
+    "windows": {
+      "arm64": false,
+      "arm": false,
+      "x64": false,
+      "x86": false
+    },
+    "linux": {
+      "arm64": false,
+      "arm": false,
+      "x64": false,
+      "x86": false
+    },
+    "mac": {
+      "arm64": false,
+      "arm": false,
+      "x64": false,
+      "x86": false
+    },
+    "ios": {
+      "arm64": false,
+      "arm": false,
+      "x64": false,
+      "x86": false
+    }
+  },
+  "dependence": [],
+  "conflicts": [],
+  "stableVerified": false,
+  "experimental": true,
+  "deprecated": false,
+  "hasExtendedContent": true
+}

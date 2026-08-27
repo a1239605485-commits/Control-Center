@@ -1,19 +1,71 @@
-# v0.1.2 真机测试
+# v0.1.3 真机测试步骤
 
-1. 用 GitHub Actions 编译 arm64。
-2. 安装/替换 `libModControlCenter.android.arm64.so`。
-3. 进入世界后观察屏幕左上：X≈24、Y≈90。
-4. 正常应出现 `MOD Control Center - Present Test`。
-5. 点击 `MASTER: ON/OFF`，重启游戏确认状态保持。
+## 1. 编译
 
-如果 UI 不出现，请提供：
+把源码上传新的 GitHub 仓库，运行仓库自带的 Actions。
 
-- TEFManager 最新日志 ZIP；
-- 如果方便，再提供 MOD 私有目录中的 `imgui_runtime.log`。
+最终应得到：
 
-`imgui_runtime.log` 最关键的判断：
+```text
+libModControlCenter.android.arm64.so
+```
 
-- 有 `Present prefix hook id=`：说明渲染挂点安装成功。
-- 有 `GL_VERSION=`：说明 Present 回调处存在当前 GL Context。
-- 有 `initialized successfully on Present thread`：说明 ImGui renderer 已真正初始化。
-- 如果持续是 `Present hook ran without a current GL context`，下一步才需要转到 native `eglSwapBuffers` hook。
+以及自动组装的 TEFManager 包。
+
+## 2. 安装后进入世界
+
+正常情况下，顶部中间应该出现一个小型：
+
+```text
+[ MOD ]
+```
+
+位置大约在屏幕宽度 55.5% 处、顶部 18 px。
+
+对于之前提供的 1832×832 截图，大约是：
+
+```text
+X ≈ 1017
+Y ≈ 18
+```
+
+它不会占用背包左侧区域，也不会盖住右上生命值区域。
+
+## 3. 点击测试
+
+点击 `MOD`，应该出现居中测试面板。
+
+点击：
+
+```text
+MASTER: ON
+```
+
+应该变成：
+
+```text
+MASTER: OFF
+```
+
+重新启动游戏后，状态应保持。
+
+## 4. 如果仍然没有 UI
+
+请优先提供：
+
+1. TEFManager 日志 ZIP
+2. MOD 私有目录中的 `imgui_runtime.log`
+
+`imgui_runtime.log` 能直接区分：
+
+- ShadowHook 没能 Hook `libEGL.so`
+- `eglSwapBuffers`/damage variant 从未被调用
+- Hook 已调用但 EGL context 不存在
+- EGL/GL 正常但 ImGui 初始化失败
+- ImGui 已成功初始化并连续 render
+
+## 5. 安全说明
+
+本版本不修改任何 Terraria 数值。
+
+如果某个 EGL damage variant 不存在，日志会记录 hook 不可用，但不会因此停止另外两个 swap hook。
