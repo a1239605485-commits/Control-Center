@@ -47,6 +47,21 @@ std::atomic<int> g_mouse_y{0};
 std::atomic<bool> g_mouse_left{false};
 std::atomic<unsigned long long> g_swap_count{0};
 std::atomic<unsigned long long> g_render_count{0};
+std::atomic<unsigned int> g_native_probe_flags{0};
+std::atomic<unsigned int> g_native_probe_emitted{0};
+
+enum NativeProbeFlag : unsigned int {
+    PROBE_SHADOWHOOK_INIT_OK = 1u << 0,
+    PROBE_EGL_HOOK_REQUEST_OK = 1u << 1,
+    PROBE_EGL_HOOK_CALLBACK_OK = 1u << 2,
+    PROBE_EGL_SWAP_SEEN = 1u << 3,
+    PROBE_GL_CONTEXT_SEEN = 1u << 4,
+    PROBE_IMGUI_READY = 1u << 5,
+    PROBE_FRAME_RENDERED = 1u << 6,
+    PROBE_SHADOWHOOK_INIT_FAIL = 1u << 7,
+    PROBE_EGL_HOOK_REQUEST_FAIL = 1u << 8,
+    PROBE_EGL_HOOK_CALLBACK_FAIL = 1u << 9
+};
 
 bool g_imgui_ready = false;
 bool g_panel_open = false;
@@ -117,6 +132,42 @@ void load_config() {
     std::fclose(f);
 }
 
+void emit_tef_probe_marker(const char* marker) {
+    if (!marker || !*marker) return;
+    // Intentionally query a non-existent type. TEFKernel itself records the
+    // lookup result in runtime_*.log, giving us a diagnostic channel that is
+    // visible in TEFManager exports even when this MOD's private log isn't.
+    patch_handle_t probe = patchlib_type_get_type("MCCProbe", marker);
+    if (probe) patchlib_free(probe);
+}
+
+void flush_native_probe_markers_on_game_thread() {
+    const unsigned int flags = g_native_probe_flags.load(std::memory_order_acquire);
+    unsigned int emitted = g_native_probe_emitted.load(std::memory_order_relaxed);
+
+    struct Marker { unsigned int bit; const char* name; };
+    static const Marker markers[] = {
+        {PROBE_SHADOWHOOK_INIT_OK, "SHADOWHOOK_INIT_OK"},
+        {PROBE_SHADOWHOOK_INIT_FAIL, "SHADOWHOOK_INIT_FAIL"},
+        {PROBE_EGL_HOOK_REQUEST_OK, "EGL_HOOK_REQUEST_OK"},
+        {PROBE_EGL_HOOK_REQUEST_FAIL, "EGL_HOOK_REQUEST_FAIL"},
+        {PROBE_EGL_HOOK_CALLBACK_OK, "EGL_HOOK_CALLBACK_OK"},
+        {PROBE_EGL_HOOK_CALLBACK_FAIL, "EGL_HOOK_CALLBACK_FAIL"},
+        {PROBE_EGL_SWAP_SEEN, "EGL_SWAP_SEEN"},
+        {PROBE_GL_CONTEXT_SEEN, "GL_CONTEXT_SEEN"},
+        {PROBE_IMGUI_READY, "IMGUI_READY"},
+        {PROBE_FRAME_RENDERED, "FRAME_RENDERED"},
+    };
+
+    for (const auto& m : markers) {
+        if ((flags & m.bit) && !(emitted & m.bit)) {
+            emit_tef_probe_marker(m.name);
+            emitted |= m.bit;
+        }
+    }
+    g_native_probe_emitted.store(emitted, std::memory_order_release);
+}
+
 void sample_input_state() {
     int w = 0;
     int h = 0;
@@ -148,6 +199,7 @@ void main_update_postfix(
     (void)result;
     (void)sig_info;
     sample_input_state();
+    flush_native_probe_markers_on_game_thread();
 }
 
 bool init_imgui_on_egl_thread(EGLDisplay dpy, EGLSurface surface, int surface_w, int surface_h) {
@@ -160,6 +212,8 @@ bool init_imgui_on_egl_thread(EGLDisplay dpy, EGLSurface surface, int surface_w,
         }
         return false;
     }
+
+    g_native_probe_flags.fetch_or(PROBE_GL_CONTEXT_SEEN, std::memory_order_release);
 
     const GLubyte* version_raw = glGetString(GL_VERSION);
     const GLubyte* renderer_raw = glGetString(GL_RENDERER);
@@ -198,6 +252,7 @@ bool init_imgui_on_egl_thread(EGLDisplay dpy, EGLSurface surface, int surface_w,
 
     g_last_frame_time = std::chrono::steady_clock::now();
     g_imgui_ready = true;
+    g_native_probe_flags.fetch_or(PROBE_IMGUI_READY, std::memory_order_release);
     append_runtime_log("imgui: initialized successfully inside eglSwapBuffers");
     return true;
 }
@@ -306,10 +361,12 @@ void draw_overlay(int surface_w, int surface_h) {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     g_render_count.fetch_add(1, std::memory_order_relaxed);
+    g_native_probe_flags.fetch_or(PROBE_FRAME_RENDERED, std::memory_order_release);
 }
 
 void render_before_native_swap(EGLDisplay dpy, EGLSurface surface, const char* source_name) {
     const unsigned long long count = g_swap_count.fetch_add(1, std::memory_order_relaxed) + 1;
+    g_native_probe_flags.fetch_or(PROBE_EGL_SWAP_SEEN, std::memory_order_release);
     if (count == 1) append_runtime_logf("egl: first native swap intercepted via %s", source_name ? source_name : "(unknown)");
 
     EGLint surface_w = 0;
@@ -379,6 +436,11 @@ void shadowhook_hooked_callback(
 ) {
     (void)new_addr;
     (void)arg;
+    if (error_number == 0)
+        g_native_probe_flags.fetch_or(PROBE_EGL_HOOK_CALLBACK_OK, std::memory_order_release);
+    else
+        g_native_probe_flags.fetch_or(PROBE_EGL_HOOK_CALLBACK_FAIL, std::memory_order_release);
+
     append_runtime_logf(
         "shadowhook callback: err=%d lib=%s sym=%s sym_addr=%p orig=%p",
         error_number,
@@ -406,7 +468,7 @@ extern "C" void mod_control_center_init(kernel_mod_handle_t* handle) {
     if (!g_runtime_log_path.empty()) {
         FILE* f = std::fopen(g_runtime_log_path.c_str(), "w");
         if (f) {
-            std::fprintf(f, "MOD Control Center v0.1.3 - native eglSwapBuffers test\n");
+            std::fprintf(f, "MOD Control Center v0.1.4 - native eglSwapBuffers static-hook fix test\n");
             std::fclose(f);
         }
     }
@@ -438,12 +500,16 @@ extern "C" void mod_control_center_init(kernel_mod_handle_t* handle) {
         append_runtime_log("input: Terraria.Main type not found");
     }
 
-    const int sh_init = shadowhook_init(SHADOWHOOK_MODE_MULTI, false);
+    const int sh_init = shadowhook_init(SHADOWHOOK_MODE_SHARED, true);
     if (sh_init != 0) {
+        g_native_probe_flags.fetch_or(PROBE_SHADOWHOOK_INIT_FAIL, std::memory_order_release);
+        emit_tef_probe_marker("SHADOWHOOK_INIT_FAIL_IMMEDIATE");
         append_runtime_logf("shadowhook: init failed err=%d msg=%s", sh_init, shadowhook_to_errmsg(sh_init));
         return;
     }
-    append_runtime_log("shadowhook: initialized in MULTI mode");
+    g_native_probe_flags.fetch_or(PROBE_SHADOWHOOK_INIT_OK, std::memory_order_release);
+    emit_tef_probe_marker("SHADOWHOOK_INIT_OK_IMMEDIATE");
+    append_runtime_log("shadowhook: initialized in SHARED mode (v1.0.10 static path)");
 
     g_swap_hook_stub = shadowhook_hook_sym_name_callback(
         "libEGL.so",
@@ -455,9 +521,13 @@ extern "C" void mod_control_center_init(kernel_mod_handle_t* handle) {
     );
 
     if (!g_swap_hook_stub) {
+        g_native_probe_flags.fetch_or(PROBE_EGL_HOOK_REQUEST_FAIL, std::memory_order_release);
+        emit_tef_probe_marker("EGL_HOOK_REQUEST_FAIL_IMMEDIATE");
         const int err = shadowhook_get_errno();
         append_runtime_logf("shadowhook: eglSwapBuffers hook failed err=%d msg=%s", err, shadowhook_to_errmsg(err));
     } else {
+        g_native_probe_flags.fetch_or(PROBE_EGL_HOOK_REQUEST_OK, std::memory_order_release);
+        emit_tef_probe_marker("EGL_HOOK_REQUEST_OK_IMMEDIATE");
         append_runtime_logf("shadowhook: eglSwapBuffers hook stub=%p orig=%p", g_swap_hook_stub, reinterpret_cast<void*>(g_original_egl_swap_buffers));
     }
 

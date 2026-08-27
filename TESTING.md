@@ -1,4 +1,4 @@
-# v0.1.3 真机测试步骤
+# v0.1.4 真机测试步骤
 
 ## 1. 编译
 
@@ -53,8 +53,8 @@ MASTER: OFF
 
 请优先提供：
 
-1. TEFManager 日志 ZIP
-2. MOD 私有目录中的 `imgui_runtime.log`
+1. **TEFManager 日志 ZIP（优先）**
+2. 如果方便，再附 MOD 私有目录中的 `imgui_runtime.log`
 
 `imgui_runtime.log` 能直接区分：
 
@@ -69,3 +69,22 @@ MASTER: OFF
 本版本不修改任何 Terraria 数值。
 
 如果某个 EGL damage variant 不存在，日志会记录 hook 不可用，但不会因此停止另外两个 swap hook。
+
+
+## 6. 只看 TEFManager 日志也能判断
+
+v0.1.4 会在 runtime 日志中留下 `MCCProbe` 标记。正常完整链路应依次达到：
+
+```text
+SHADOWHOOK_INIT_OK
+EGL_HOOK_REQUEST_OK
+EGL_HOOK_CALLBACK_OK
+EGL_SWAP_SEEN
+GL_CONTEXT_SEEN
+IMGUI_READY
+FRAME_RENDERED
+```
+
+如果只到某一步，下一版就只修那一步，不再继续猜。
+
+注意：日志中的 `Type not found: MCCProbe.xxx` 是故意生成的诊断标记，不代表 MOD 查错了 Terraria 类型。

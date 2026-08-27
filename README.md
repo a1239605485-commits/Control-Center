@@ -1,4 +1,4 @@
-# 泰拉 MOD 控制中心 v0.1.3 — ImGui Native EGL Test
+# 泰拉 MOD 控制中心 v0.1.4 — ImGui Native EGL Test
 
 作者：liuxin  
 包名：`celso.modcontrolcenter`
@@ -7,13 +7,15 @@
 
 ## 本版目标
 
-前两版已经确认 KernelLoader MOD 可以加载、`Main.Draw` / `GraphicsDevice.Present` 也能 Hook，但 ImGui 没有真正出现在最终画面里。因此 v0.1.3 停止在 MonoGame 管理层提交 UI，改为直接拦截 Android 最终 EGL 提交函数：
+前两版已经确认 KernelLoader MOD 可以加载、`Main.Draw` / `GraphicsDevice.Present` 也能 Hook，但 ImGui 没有真正出现在最终画面里。因此 v0.1.4 停止在 MonoGame 管理层提交 UI，改为直接拦截 Android 最终 EGL 提交函数：
 
 - `eglSwapBuffers`
 - `eglSwapBuffersWithDamageKHR`
 - `eglSwapBuffersWithDamageEXT`
 
-使用 ByteDance ShadowHook v2.0.1 在 `libEGL.so` 上做 arm64 inline hook。
+使用 **ByteDance ShadowHook v1.0.10** 在 `libEGL.so` 上做 arm64 inline hook。
+
+之所以固定到 v1.0.10，是因为 KernelLoader 的 MOD 需要单 `.so` 自包含；ShadowHook 新版引入了额外的 `libshadowhook_nothing.so`/linker 初始化依赖，不适合我们之前那种直接静态塞入一个 MOD `.so` 的方式。v1.0.10 仍支持 Android 15 和 16 KB page size，更适合这一轮单文件验证。
 
 渲染链：
 
@@ -97,7 +99,7 @@ imgui_runtime.log
 成功时重点应看到：
 
 ```text
-shadowhook: initialized in MULTI mode
+shadowhook: initialized in SHARED mode (v1.0.10 static path)
 shadowhook callback: err=0 lib=libEGL.so sym=eglSwapBuffers ...
 egl: first native swap intercepted via eglSwapBuffers
 EGL surface=1832x832
@@ -123,6 +125,24 @@ eglSwapBuffersWithDamageEXT
 构建时由 CMake 自动获取：
 
 - Dear ImGui v1.92.9 — MIT License
-- ByteDance ShadowHook v2.0.1 — MIT License
+- ByteDance ShadowHook v1.0.10 — MIT License
 
-ShadowHook 源码静态编入 `libModControlCenter.android.arm64.so`，不会要求用户额外安装第二个 `.so`。
+ShadowHook v1.0.10 源码静态编入 `libModControlCenter.android.arm64.so`，不会要求用户额外安装第二个 `.so`。
+
+## TEFKernel 可见探针
+
+因为 TEFManager 导出的日志不会包含 MOD 私有目录里的 `imgui_runtime.log`，v0.1.4 另外增加了一套 **TEFKernel 可见探针**。它会故意查询不存在的 `MCCProbe.*` 类型，因此 runtime 日志会出现 `Type not found`，但这只是诊断标记，不是错误。
+
+可能看到：
+
+```text
+MCCProbe.SHADOWHOOK_INIT_OK_IMMEDIATE
+MCCProbe.EGL_HOOK_REQUEST_OK_IMMEDIATE
+MCCProbe.EGL_HOOK_CALLBACK_OK
+MCCProbe.EGL_SWAP_SEEN
+MCCProbe.GL_CONTEXT_SEEN
+MCCProbe.IMGUI_READY
+MCCProbe.FRAME_RENDERED
+```
+
+这些标记能精确告诉我们 UI 链路卡在哪一步。

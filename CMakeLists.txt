@@ -19,13 +19,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(imgui)
 
 # ShadowHook is used only to intercept Android's real eglSwapBuffers function.
-# v2.0.1 supports arm64 and modern Android versions. We compile its native
-# sources directly into this MOD so TEFManager only needs one .so file.
+# v1.0.10 is intentionally pinned for the single-.so static embedding used by
+# KernelLoader. Newer ShadowHook versions added libshadowhook_nothing.so and are
+# not suitable for this one-file static integration path.
 if(ANDROID)
     FetchContent_Declare(
         shadowhook_src
         GIT_REPOSITORY https://github.com/bytedance/android-inline-hook.git
-        GIT_TAG v2.0.1
+        GIT_TAG v1.0.10
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(shadowhook_src)
