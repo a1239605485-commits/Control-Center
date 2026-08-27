@@ -1,11 +1,11 @@
-# 泰拉 MOD 控制中心 - ImGui Test v0.1.0
+# 泰拉 MOD 控制中心 - ImGui Test v0.1.1
 
 这是独立 UI 基础设施测试版，不包含 Resource Saver、Less Grind 或任何游戏数值修改。
 
 ## 本版只验证
 
 1. `Terraria.Main.Draw(GameTime)` Postfix 能否安全运行原生 OpenGL ES 绘制。
-2. Dear ImGui v1.92.9 能否在 Terraria Android 的当前 GLES3 context 上初始化。
+2. Dear ImGui v1.92.9 能否在 Terraria Android 的当前 GLES2 context 上初始化。
 3. Terraria `Main.mouseX / mouseY / mouseLeft` 能否驱动 ImGui 按钮。
 4. `Master` 总开关能否写入 MOD `private_dir/control_center.ini` 并在下次启动恢复。
 
@@ -16,7 +16,7 @@
 - 不使用 `imgui_impl_android`，避免接管 Android 输入链。
 - 只使用 Dear ImGui 核心 + 官方 `imgui_impl_opengl3` renderer backend。
 - 输入由 Terraria 已有 `mouseX/mouseY/mouseLeft` 喂给 ImGuiIO。
-- 如果 `Main.Draw` Postfix 时没有 OpenGL ES context，或检测不到 OpenGL ES 3，则 UI 安全禁用，不应影响游戏。
+- 如果 `Main.Draw` Postfix 时没有 OpenGL ES context，或检测不到 OpenGL ES 2，则 UI 安全禁用，不应影响游戏。
 
 ## Dear ImGui
 

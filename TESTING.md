@@ -1,4 +1,4 @@
-# v0.1.0 真机测试顺序
+# v0.1.1 真机测试顺序
 
 ## 1. 编译
 
@@ -43,7 +43,7 @@ Actions 会同时输出可安装的 `ModControlCenter/` artifact。
 - `GL_RENDERER=...`
 - `imgui: initialized successfully`
 
-如果显示 `OpenGL ES 3 not detected`，说明需要制作 GLES2 renderer fallback。
+如果仍然没有 UI，但游戏正常运行，则重点检查 `imgui_runtime.log`：如果 `GL_VERSION` 为空或反复显示 `no current OpenGL ES context yet`，说明 `Main.Draw` 所在线程没有当前 EGL/GL 上下文，下一版应把 ImGui 渲染移到真正的 EGL 提交阶段，而不是继续修改 ImGui 控件代码。
 
 ## 5. 如果能显示但点不了
 

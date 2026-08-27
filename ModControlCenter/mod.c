@@ -15,7 +15,7 @@ static void init_mod(kernel_mod_handle_t* handle) {
     mod_logger_write(
         MOD_LOG_LEVEL_INFO,
         "ModControlCenter",
-        "MOD Control Center v0.1.0 initializing (author: liuxin)"
+        "MOD Control Center v0.1.1 initializing (author: liuxin)"
     );
 
     mod_control_center_init(handle);
@@ -23,7 +23,7 @@ static void init_mod(kernel_mod_handle_t* handle) {
     mod_logger_write(
         MOD_LOG_LEVEL_INFO,
         "ModControlCenter",
-        "MOD Control Center v0.1.0 initialized"
+        "MOD Control Center v0.1.1 initialized"
     );
 }
 
@@ -34,15 +34,15 @@ static void cleanup_mod(kernel_mod_handle_t* handle) {
     mod_logger_write(
         MOD_LOG_LEVEL_INFO,
         "ModControlCenter",
-        "MOD Control Center v0.1.0 unloaded"
+        "MOD Control Center v0.1.1 unloaded"
     );
 }
 
 static kernel_mod_info_t g_info = {
     .pkg_id = "celso.modcontrolcenter",
-    .version_code = 202608280,
+    .version_code = 202608281,
     .api_version = 1,
-    .version = "0.1.0"
+    .version = "0.1.1"
 };
 
 static kernel_mod_info_t* get_info(void) {

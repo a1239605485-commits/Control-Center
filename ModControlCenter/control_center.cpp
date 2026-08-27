@@ -6,7 +6,7 @@
 #include <cstring>
 #include <string>
 
-#include <GLES3/gl3.h>
+#include <GLES2/gl2.h>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -173,10 +173,12 @@ bool init_imgui_if_possible() {
         return false;
     }
 
-    // v0.1 intentionally targets GLES3 only. If this guard fails the mod stays loaded
-    // but does not render anything, which is safer than calling GLES3 on a GLES2 context.
-    if (std::strstr(version, "OpenGL ES 3") == nullptr) {
-        append_runtime_log("imgui: OpenGL ES 3 not detected; overlay disabled safely");
+    // Terraria Android 1.4.5.6.4 uses OpenGL ES 2.0.
+    // Dear ImGui's OpenGL backend supports GLES2 when compiled with
+    // IMGUI_IMPL_OPENGL_ES2 and initialized with GLSL ES 1.00.
+    if (std::strstr(version, "OpenGL ES 2") == nullptr &&
+        std::strstr(version, "OpenGL ES 3") == nullptr) {
+        append_runtime_log("imgui: unsupported OpenGL ES version; overlay disabled safely");
         g_init_permanently_disabled = true;
         return false;
     }
@@ -194,7 +196,7 @@ bool init_imgui_if_possible() {
     style.ScaleAllSizes(1.75f);
     style.FontScaleMain = 1.75f;
 
-    if (!ImGui_ImplOpenGL3_Init("#version 300 es")) {
+    if (!ImGui_ImplOpenGL3_Init("#version 100")) {
         append_runtime_log("imgui: ImGui_ImplOpenGL3_Init failed");
         ImGui::DestroyContext();
         g_init_permanently_disabled = true;
@@ -314,7 +316,7 @@ extern "C" void mod_control_center_init(kernel_mod_handle_t* handle) {
     if (!g_runtime_log_path.empty()) {
         FILE* file = std::fopen(g_runtime_log_path.c_str(), "w");
         if (file) {
-            std::fprintf(file, "MOD Control Center v0.1.0\n");
+            std::fprintf(file, "MOD Control Center v0.1.1\n");
             std::fclose(file);
         }
     }

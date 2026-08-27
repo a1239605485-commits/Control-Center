@@ -46,9 +46,10 @@ macro(add_terraria_imgui_mod MOD_NAME)
     )
 
     if(ANDROID)
-        # Dear ImGui's OpenGL3 backend supports GLES3 on Android.
-        target_compile_definitions(${MOD_NAME} PRIVATE IMGUI_IMPL_OPENGL_ES3)
-        target_link_libraries(${MOD_NAME} PRIVATE GLESv3 log android)
+        # Terraria Android 1.4.5.6.4 renders through GLES2.
+        # Force Dear ImGui's OpenGL backend to compile for GLES2.
+        target_compile_definitions(${MOD_NAME} PRIVATE IMGUI_IMPL_OPENGL_ES2)
+        target_link_libraries(${MOD_NAME} PRIVATE GLESv2 log android)
     endif()
 
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
