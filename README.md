@@ -1,36 +1,42 @@
-# 泰拉 MOD 控制中心 - ImGui Test v0.1.1
+# 泰拉 MOD 控制中心 / Terraria MOD Control Center v0.1.2
 
-这是独立 UI 基础设施测试版，不包含 Resource Saver、Less Grind 或任何游戏数值修改。
+这是一个**纯 UI 测试 MOD**，不修改 Terraria 的任何游戏数值。
 
-## 本版只验证
+## v0.1.2 的唯一目标
 
-1. `Terraria.Main.Draw(GameTime)` Postfix 能否安全运行原生 OpenGL ES 绘制。
-2. Dear ImGui v1.92.9 能否在 Terraria Android 的当前 GLES2 context 上初始化。
-3. Terraria `Main.mouseX / mouseY / mouseLeft` 能否驱动 ImGui 按钮。
-4. `Master` 总开关能否写入 MOD `private_dir/control_center.ini` 并在下次启动恢复。
+把 Dear ImGui 的提交点从 `Terraria.Main.Draw(GameTime)` 移到 MonoGame 的：
 
-## 安全设计
+- 首选：`Microsoft.Xna.Framework.Graphics.GraphicsDevice.Present()` Prefix
+- 回退：`Microsoft.Xna.Framework.GraphicsDeviceManager.EndDraw()` Prefix
 
-- 不调用 Terraria/MonoGame `SpriteBatch.Begin/End/DrawString`。
-- 不调用任何 IL2CPP `Vector2/Color` 结构体绘图接口。
-- 不使用 `imgui_impl_android`，避免接管 Android 输入链。
-- 只使用 Dear ImGui 核心 + 官方 `imgui_impl_opengl3` renderer backend。
-- 输入由 Terraria 已有 `mouseX/mouseY/mouseLeft` 喂给 ImGuiIO。
-- 如果 `Main.Draw` Postfix 时没有 OpenGL ES context，或检测不到 OpenGL ES 2，则 UI 安全禁用，不应影响游戏。
+MonoGame 的 `EndDraw()` 最终调用 `GraphicsDevice.Present()`；而 `Present()` 内部再进入平台 `PlatformPresent()`。因此 Prefix 位于“游戏画面已完成、最终 swap 之前”。
 
-## Dear ImGui
+## 测试 UI 位置
 
-CMake 构建时通过 FetchContent 拉取并固定到 `v1.92.9`，不在此源码包中复制第三方源文件。
+固定显示在屏幕左上区域：
 
-## 运行后诊断
+- X = 24 px
+- Y = 90 px
+- 宽度 = `min(620 px, 屏幕宽度 × 62%)`
+- 高度 = 280 px
 
-MOD 私有目录会生成：
+标题：`MOD Control Center - Present Test`
 
-- `control_center.ini`：测试总开关状态。
-- `imgui_runtime.log`：GL 版本、renderer、ImGui 初始化结果。
+只有一个按钮：`MASTER: ON/OFF`。
 
-如果 UI 没出现，请将 TEFManager 日志和 `imgui_runtime.log` 一起提供。
+## 诊断文件
 
-## UI
+MOD 私有目录中：
 
-第一版故意使用英文 ASCII 字体，避免中文字体问题干扰 ImGui 渲染链验证。确认 UI 稳定后，下一版再接入中文字体和模块注册系统。
+`imgui_runtime.log`
+
+成功时重点看：
+
+```text
+init: GraphicsDevice.Present prefix hook id=...
+GL_VERSION=...
+GL_RENDERER=...
+imgui: initialized successfully on Present thread
+```
+
+如果 `Present` 不存在，会自动尝试 `GraphicsDeviceManager.EndDraw()`。

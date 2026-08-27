@@ -2,17 +2,24 @@
   "pkgId": "celso.modcontrolcenter",
   "name": "泰拉 MOD 控制中心 (ImGui Test)",
   "author": "liuxin",
-  "version": "0.1.1",
-  "versionCode": 202608281,
-  "description": "Dear ImGui 控制中心第一阶段安全测试版。",
-  "introduce": "仅显示一个总开关测试 UI，不修改任何 Terraria 游戏数值。",
-  "features": ["QUALITY_OF_LIFE"],
+  "version": "0.1.2",
+  "versionCode": 202608282,
+  "description": "Dear ImGui 控制中心 Present 渲染阶段测试版。",
+  "introduce": "仅显示一个总开关测试 UI，改在 GraphicsDevice.Present 前绘制，不修改 Terraria 游戏数值。",
+  "features": [
+    "QUALITY_OF_LIFE"
+  ],
   "sizeCategory": "SMALL",
   "targetGameVersion": "1.4.5.6.4",
   "minGameVersion": "1.4.5.6.4",
   "maxGameVersion": "1.4.5.6.4",
   "support": {
-    "android": {"arm64": true, "arm": false, "x64": false, "x86": false}
+    "android": {
+      "arm64": true,
+      "arm": false,
+      "x64": false,
+      "x86": false
+    }
   },
   "dependence": [],
   "conflicts": [],
