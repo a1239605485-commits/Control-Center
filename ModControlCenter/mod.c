@@ -15,7 +15,7 @@ static void init_mod(kernel_mod_handle_t* handle) {
     mod_logger_write(
         MOD_LOG_LEVEL_INFO,
         "ModControlCenter",
-        "MOD Control Center v0.1.5 initializing (native eglSwapBuffers framebuffer-0 fix test, author: liuxin)"
+        "MOD Control Center v0.1.6 initializing (native eglSwapBuffers framebuffer-0 fix test, author: liuxin)"
     );
 
     mod_control_center_init(handle);
@@ -23,7 +23,7 @@ static void init_mod(kernel_mod_handle_t* handle) {
     mod_logger_write(
         MOD_LOG_LEVEL_INFO,
         "ModControlCenter",
-        "MOD Control Center v0.1.5 initialized"
+        "MOD Control Center v0.1.6 initialized"
     );
 }
 
@@ -34,15 +34,15 @@ static void cleanup_mod(kernel_mod_handle_t* handle) {
     mod_logger_write(
         MOD_LOG_LEVEL_INFO,
         "ModControlCenter",
-        "MOD Control Center v0.1.5 unloaded"
+        "MOD Control Center v0.1.6 unloaded"
     );
 }
 
 static kernel_mod_info_t g_info = {
     .pkg_id = "celso.modcontrolcenter",
-    .version_code = 202608285,
+    .version_code = 202608286,
     .api_version = 1,
-    .version = "0.1.5"
+    .version = "0.1.6"
 };
 
 static kernel_mod_info_t* get_info(void) {

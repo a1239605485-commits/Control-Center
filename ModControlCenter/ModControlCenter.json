@@ -2,8 +2,8 @@
   "pkgId": "celso.modcontrolcenter",
   "name": "泰拉 MOD 控制中心 (ImGui EGL Framebuffer Fix Test)",
   "author": "liuxin",
-  "version": "0.1.5",
-  "versionCode": 202608285,
+  "version": "0.1.6",
+  "versionCode": 202608286,
   "description": "Dear ImGui 控制中心原生 EGL framebuffer 0 绘制测试版。",
   "introduce": "平时只显示一个小型 MOD 按钮，点击后打开总开关测试面板；直接在 eglSwapBuffers 前绘制，不修改 Terraria 游戏数值。",
   "features": [

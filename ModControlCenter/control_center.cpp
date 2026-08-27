@@ -49,6 +49,15 @@ std::atomic<unsigned long long> g_swap_count{0};
 std::atomic<unsigned long long> g_render_count{0};
 std::atomic<unsigned int> g_native_probe_flags{0};
 std::atomic<unsigned int> g_native_probe_emitted{0};
+std::atomic<int> g_diag_surface_w{0};
+std::atomic<int> g_diag_surface_h{0};
+std::atomic<int> g_diag_viewport_x{0};
+std::atomic<int> g_diag_viewport_y{0};
+std::atomic<int> g_diag_viewport_w{0};
+std::atomic<int> g_diag_viewport_h{0};
+std::atomic<int> g_diag_surface_relation{0}; // 1=match, 2=mismatch, 3=no current draw surface
+std::atomic<int> g_diag_gl_error{0};
+std::atomic<bool> g_diag_dimensions_emitted{false};
 
 enum NativeProbeFlag : unsigned int {
     PROBE_SHADOWHOOK_INIT_OK = 1u << 0,
@@ -62,7 +71,16 @@ enum NativeProbeFlag : unsigned int {
     PROBE_EGL_HOOK_REQUEST_FAIL = 1u << 8,
     PROBE_EGL_HOOK_CALLBACK_FAIL = 1u << 9,
     PROBE_FBO_NONZERO_SEEN = 1u << 10,
-    PROBE_FBO_ZERO_BOUND = 1u << 11
+    PROBE_FBO_ZERO_BOUND = 1u << 11,
+    PROBE_CURRENT_DRAW_SURFACE_SEEN = 1u << 12,
+    PROBE_SWAP_SURFACE_MATCH = 1u << 13,
+    PROBE_SWAP_SURFACE_MISMATCH = 1u << 14,
+    PROBE_MAKECURRENT_OK = 1u << 15,
+    PROBE_MAKECURRENT_FAIL = 1u << 16,
+    PROBE_VIEWPORT_SEEN = 1u << 17,
+    PROBE_FB_COMPLETE = 1u << 18,
+    PROBE_FB_INCOMPLETE = 1u << 19,
+    PROBE_GL_ERROR_SEEN = 1u << 20
 };
 
 bool g_imgui_ready = false;
@@ -161,6 +179,15 @@ void flush_native_probe_markers_on_game_thread() {
         {PROBE_FRAME_RENDERED, "FRAME_RENDERED"},
         {PROBE_FBO_NONZERO_SEEN, "FBO_NONZERO_SEEN"},
         {PROBE_FBO_ZERO_BOUND, "FBO_ZERO_BOUND"},
+        {PROBE_CURRENT_DRAW_SURFACE_SEEN, "CURRENT_DRAW_SURFACE_SEEN"},
+        {PROBE_SWAP_SURFACE_MATCH, "SWAP_SURFACE_MATCH"},
+        {PROBE_SWAP_SURFACE_MISMATCH, "SWAP_SURFACE_MISMATCH"},
+        {PROBE_MAKECURRENT_OK, "MAKECURRENT_OK"},
+        {PROBE_MAKECURRENT_FAIL, "MAKECURRENT_FAIL"},
+        {PROBE_VIEWPORT_SEEN, "VIEWPORT_SEEN"},
+        {PROBE_FB_COMPLETE, "FB_COMPLETE"},
+        {PROBE_FB_INCOMPLETE, "FB_INCOMPLETE"},
+        {PROBE_GL_ERROR_SEEN, "GL_ERROR_SEEN"},
     };
 
     for (const auto& m : markers) {
@@ -204,6 +231,38 @@ void main_update_postfix(
     (void)sig_info;
     sample_input_state();
     flush_native_probe_markers_on_game_thread();
+
+    if (!g_diag_dimensions_emitted.load(std::memory_order_acquire)) {
+        const int sw = g_diag_surface_w.load(std::memory_order_relaxed);
+        const int sh = g_diag_surface_h.load(std::memory_order_relaxed);
+        const int vw = g_diag_viewport_w.load(std::memory_order_relaxed);
+        const int vh = g_diag_viewport_h.load(std::memory_order_relaxed);
+        if (sw > 0 && sh > 0 && vw > 0 && vh > 0) {
+            char marker[128];
+            std::snprintf(marker, sizeof(marker), "EGL_SURFACE_%dx%d", sw, sh);
+            emit_tef_probe_marker(marker);
+            std::snprintf(
+                marker, sizeof(marker), "GL_VIEWPORT_%d_%d_%d_%d",
+                g_diag_viewport_x.load(std::memory_order_relaxed),
+                g_diag_viewport_y.load(std::memory_order_relaxed),
+                vw, vh
+            );
+            emit_tef_probe_marker(marker);
+            const int gw = g_game_width.load(std::memory_order_relaxed);
+            const int gh = g_game_height.load(std::memory_order_relaxed);
+            if (gw > 0 && gh > 0) {
+                std::snprintf(marker, sizeof(marker), "GAME_SIZE_%dx%d", gw, gh);
+                emit_tef_probe_marker(marker);
+            }
+            const int relation = g_diag_surface_relation.load(std::memory_order_relaxed);
+            std::snprintf(marker, sizeof(marker), "SURFACE_RELATION_%d", relation);
+            emit_tef_probe_marker(marker);
+            const int glerr = g_diag_gl_error.load(std::memory_order_relaxed);
+            std::snprintf(marker, sizeof(marker), "GL_ERROR_0x%04X", glerr);
+            emit_tef_probe_marker(marker);
+            g_diag_dimensions_emitted.store(true, std::memory_order_release);
+        }
+    }
 }
 
 bool init_imgui_on_egl_thread(EGLDisplay dpy, EGLSurface surface, int surface_w, int surface_h) {
@@ -265,18 +324,9 @@ bool init_imgui_on_egl_thread(EGLDisplay dpy, EGLSurface surface, int surface_w,
 void draw_fb0_probe_marker(int surface_w, int surface_h) {
     if (surface_w <= 0 || surface_h <= 0) return;
 
-    // Tiny magenta square just to the left of the MOD launcher. This is drawn
-    // with raw GLES2 only, so it tells us whether framebuffer 0 is actually
-    // visible even if ImGui itself still fails to appear.
-    const int size = 14;
-    const int x = std::clamp(
-        static_cast<int>(static_cast<float>(surface_w) * 0.555f) - 24,
-        2,
-        std::max(2, surface_w - size - 2)
-    );
-    const int top_y = 38;
-    const int y = std::clamp(surface_h - top_y - size, 0, std::max(0, surface_h - size));
-
+    // Two raw GLES markers. One is always at the framebuffer's bottom-left,
+    // independent of orientation assumptions. The second stays near the MOD
+    // launcher area.
     GLboolean scissor_enabled = glIsEnabled(GL_SCISSOR_TEST);
     GLint old_scissor[4] = {0, 0, 0, 0};
     GLfloat old_clear[4] = {0.f, 0.f, 0.f, 0.f};
@@ -284,9 +334,26 @@ void draw_fb0_probe_marker(int surface_w, int surface_h) {
     glGetFloatv(GL_COLOR_CLEAR_VALUE, old_clear);
 
     glEnable(GL_SCISSOR_TEST);
-    glScissor(x, y, size, size);
+
+    glScissor(8, 8, 28, 28);
     glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+
+    const int x2 = std::clamp(
+        static_cast<int>(static_cast<float>(surface_w) * 0.555f) - 28,
+        4,
+        std::max(4, surface_w - 22)
+    );
+    const int y2 = std::max(4, surface_h - 52);
+    glScissor(x2, y2, 18, 18);
+    glClearColor(0.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    const GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        g_diag_gl_error.store(static_cast<int>(err), std::memory_order_relaxed);
+        g_native_probe_flags.fetch_or(PROBE_GL_ERROR_SEEN, std::memory_order_release);
+    }
 
     glClearColor(old_clear[0], old_clear[1], old_clear[2], old_clear[3]);
     glScissor(old_scissor[0], old_scissor[1], old_scissor[2], old_scissor[3]);
@@ -295,6 +362,16 @@ void draw_fb0_probe_marker(int surface_w, int surface_h) {
 
 void draw_overlay(int surface_w, int surface_h) {
     if (surface_w <= 0 || surface_h <= 0) return;
+
+    GLint original_viewport[4] = {0, 0, 0, 0};
+    glGetIntegerv(GL_VIEWPORT, original_viewport);
+    g_diag_viewport_x.store(original_viewport[0], std::memory_order_relaxed);
+    g_diag_viewport_y.store(original_viewport[1], std::memory_order_relaxed);
+    g_diag_viewport_w.store(original_viewport[2], std::memory_order_relaxed);
+    g_diag_viewport_h.store(original_viewport[3], std::memory_order_relaxed);
+    if (original_viewport[2] > 0 && original_viewport[3] > 0) {
+        g_native_probe_flags.fetch_or(PROBE_VIEWPORT_SEEN, std::memory_order_release);
+    }
 
     ImGuiIO& io = ImGui::GetIO();
 
@@ -412,15 +489,23 @@ void draw_overlay(int surface_w, int surface_h) {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glViewport(0, 0, surface_w, surface_h);
     g_native_probe_flags.fetch_or(PROBE_FBO_ZERO_BOUND, std::memory_order_release);
+
+    const GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (fb_status == GL_FRAMEBUFFER_COMPLETE)
+        g_native_probe_flags.fetch_or(PROBE_FB_COMPLETE, std::memory_order_release);
+    else
+        g_native_probe_flags.fetch_or(PROBE_FB_INCOMPLETE, std::memory_order_release);
 
     draw_fb0_probe_marker(surface_w, surface_h);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    // Restore the framebuffer/color write mask Terraria left us so the hook is
+    // Restore the framebuffer/color write mask/viewport Terraria left us so the hook is
     // transparent to any work performed after this function returns.
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_fbo));
     glColorMask(previous_color_mask[0], previous_color_mask[1], previous_color_mask[2], previous_color_mask[3]);
+    glViewport(original_viewport[0], original_viewport[1], original_viewport[2], original_viewport[3]);
 
     g_render_count.fetch_add(1, std::memory_order_relaxed);
     g_native_probe_flags.fetch_or(PROBE_FRAME_RENDERED, std::memory_order_release);
@@ -437,9 +522,54 @@ void render_before_native_swap(EGLDisplay dpy, EGLSurface surface, const char* s
         eglQuerySurface(dpy, surface, EGL_WIDTH, &surface_w);
         eglQuerySurface(dpy, surface, EGL_HEIGHT, &surface_h);
     }
+    if (surface_w > 0 && surface_h > 0) {
+        g_diag_surface_w.store(surface_w, std::memory_order_relaxed);
+        g_diag_surface_h.store(surface_h, std::memory_order_relaxed);
+    }
+
+    const EGLDisplay old_display = eglGetCurrentDisplay();
+    const EGLContext old_context = eglGetCurrentContext();
+    const EGLSurface old_draw = eglGetCurrentSurface(EGL_DRAW);
+    const EGLSurface old_read = eglGetCurrentSurface(EGL_READ);
+
+    bool switched = false;
+    if (old_draw != EGL_NO_SURFACE) {
+        g_native_probe_flags.fetch_or(PROBE_CURRENT_DRAW_SURFACE_SEEN, std::memory_order_release);
+    }
+
+    if (old_draw == surface && old_draw != EGL_NO_SURFACE) {
+        g_diag_surface_relation.store(1, std::memory_order_relaxed);
+        g_native_probe_flags.fetch_or(PROBE_SWAP_SURFACE_MATCH, std::memory_order_release);
+    } else {
+        g_diag_surface_relation.store(old_draw == EGL_NO_SURFACE ? 3 : 2, std::memory_order_relaxed);
+        g_native_probe_flags.fetch_or(PROBE_SWAP_SURFACE_MISMATCH, std::memory_order_release);
+
+        if (
+            old_context != EGL_NO_CONTEXT &&
+            old_display == dpy &&
+            old_draw != EGL_NO_SURFACE &&
+            old_read != EGL_NO_SURFACE &&
+            surface != EGL_NO_SURFACE
+        ) {
+            if (eglMakeCurrent(dpy, surface, surface, old_context) == EGL_TRUE) {
+                switched = true;
+                g_native_probe_flags.fetch_or(PROBE_MAKECURRENT_OK, std::memory_order_release);
+                append_runtime_log("egl: temporarily switched current draw/read surface to swap surface");
+            } else {
+                g_native_probe_flags.fetch_or(PROBE_MAKECURRENT_FAIL, std::memory_order_release);
+                append_runtime_logf("egl: eglMakeCurrent(swap surface) failed err=0x%04X", eglGetError());
+            }
+        }
+    }
 
     if (surface_w > 0 && surface_h > 0 && init_imgui_on_egl_thread(dpy, surface, surface_w, surface_h)) {
         draw_overlay(surface_w, surface_h);
+    }
+
+    if (switched) {
+        if (eglMakeCurrent(old_display, old_draw, old_read, old_context) != EGL_TRUE) {
+            append_runtime_logf("egl: WARNING restore eglMakeCurrent failed err=0x%04X", eglGetError());
+        }
     }
 }
 
@@ -530,7 +660,7 @@ extern "C" void mod_control_center_init(kernel_mod_handle_t* handle) {
     if (!g_runtime_log_path.empty()) {
         FILE* f = std::fopen(g_runtime_log_path.c_str(), "w");
         if (f) {
-            std::fprintf(f, "MOD Control Center v0.1.5 - eglSwapBuffers framebuffer-0 visibility test\n");
+            std::fprintf(f, "MOD Control Center v0.1.6 - EGL draw-surface / viewport fix\n");
             std::fclose(f);
         }
     }
