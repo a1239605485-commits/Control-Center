@@ -1,1 +1,44 @@
-1
+name: Build MOD Control Center ImGui Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  android-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+
+      - name: Configure native mod
+        run: >-
+          cmake -S . -B build/android-arm64 -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_SYSTEM_NAME=Android
+          -DCMAKE_ANDROID_NDK="$ANDROID_NDK_ROOT"
+          -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a
+          -DCMAKE_ANDROID_API=24
+
+      - name: Build native library
+        run: cmake --build build/android-arm64 --parallel
+
+      - name: Assemble TEFManager mod package
+        run: |
+          mkdir -p package/ModControlCenter/Resources/lib
+          so_file="$(find build/android-arm64 -type f -name 'libModControlCenter.android.arm64.so' -print -quit)"
+          test -n "$so_file"
+          cp ModControlCenter/Manifest.json ModControlCenter/mymod.json ModControlCenter/Info.json package/ModControlCenter/
+          cp "$so_file" package/ModControlCenter/Resources/lib/libModControlCenter.android.arm64.so
+
+      - name: Publish TEFManager mod ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: 泰拉MOD控制中心-ImGui-Test
+          path: package/ModControlCenter/
+          if-no-files-found: error
