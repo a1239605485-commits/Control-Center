@@ -1,0 +1,27 @@
+{
+  "pkgId": "celso.modcontrolcenter",
+  "name": "泰拉 MOD 控制中心 (ImGui Test)",
+  "author": "liuxin",
+  "version": "0.1.0",
+  "versionCode": 202608280,
+  "brieflyDescribe": "Dear ImGui 控制中心第一阶段测试：仅验证 UI、触控与配置保存，不修改游戏数值。",
+  "description": "独立的 MOD 控制中心测试版。使用 Dear ImGui + OpenGL ES 3 在 Main.Draw 后绘制原生覆盖层，通过 Terraria 的 mouseX/mouseY/mouseLeft 接收安卓触控。当前只有一个总开关测试按钮。",
+  "features": [],
+  "sizeCategory": "SMALL",
+  "targetGameVersion": "1.4.5.6.4",
+  "minGameVersion": "1.4.5.6.4",
+  "maxGameVersion": "1.4.5.6.4",
+  "support": {
+    "android": {"arm64": true, "arm": false, "x64": false, "x86": false},
+    "windows": {"arm64": false, "arm": false, "x64": false, "x86": false},
+    "linux": {"arm64": false, "arm": false, "x64": false, "x86": false},
+    "mac": {"arm64": false, "arm": false, "x64": false, "x86": false},
+    "ios": {"arm64": false, "arm": false, "x64": false, "x86": false}
+  },
+  "dependence": [],
+  "conflicts": [],
+  "stableVerified": false,
+  "experimental": true,
+  "deprecated": false,
+  "hasExtendedContent": true
+}
