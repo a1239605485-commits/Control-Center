@@ -1,4 +1,4 @@
-# v0.1.4 真机测试步骤
+# v0.1.5 真机测试步骤
 
 ## 1. 编译
 
@@ -49,7 +49,19 @@ MASTER: OFF
 
 重新启动游戏后，状态应保持。
 
-## 4. 如果仍然没有 UI
+## 4. 先看紫色 framebuffer 标记
+
+`MOD` 按钮左侧应该还有一个很小的紫色方块（约 14×14 px）。
+
+判断方式：
+
+```text
+紫色方块 + MOD 都出现  → framebuffer 与 ImGui 都正常
+只有紫色方块           → framebuffer 0 可见，继续修 ImGui shader/state
+两者都没有             → framebuffer 0 也不是最终显示目标
+```
+
+## 5. 如果仍然没有 UI
 
 请优先提供：
 
@@ -64,16 +76,16 @@ MASTER: OFF
 - EGL/GL 正常但 ImGui 初始化失败
 - ImGui 已成功初始化并连续 render
 
-## 5. 安全说明
+## 6. 安全说明
 
 本版本不修改任何 Terraria 数值。
 
 如果某个 EGL damage variant 不存在，日志会记录 hook 不可用，但不会因此停止另外两个 swap hook。
 
 
-## 6. 只看 TEFManager 日志也能判断
+## 7. 只看 TEFManager 日志也能判断
 
-v0.1.4 会在 runtime 日志中留下 `MCCProbe` 标记。正常完整链路应依次达到：
+v0.1.5 会在 runtime 日志中留下 `MCCProbe` 标记。正常完整链路应依次达到：
 
 ```text
 SHADOWHOOK_INIT_OK
@@ -83,8 +95,12 @@ EGL_SWAP_SEEN
 GL_CONTEXT_SEEN
 IMGUI_READY
 FRAME_RENDERED
+FBO_ZERO_BOUND
 ```
 
 如果只到某一步，下一版就只修那一步，不再继续猜。
 
 注意：日志中的 `Type not found: MCCProbe.xxx` 是故意生成的诊断标记，不代表 MOD 查错了 Terraria 类型。
+
+
+如果还看到 `FBO_NONZERO_SEEN`，说明修复命中了我们当前最怀疑的问题：游戏在 swap 前留下了非 0 FBO。

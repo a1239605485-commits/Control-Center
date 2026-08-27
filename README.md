@@ -1,4 +1,4 @@
-# 泰拉 MOD 控制中心 v0.1.4 — ImGui Native EGL Test
+# 泰拉 MOD 控制中心 v0.1.5 — ImGui Native EGL Test
 
 作者：liuxin  
 包名：`celso.modcontrolcenter`
@@ -7,7 +7,11 @@
 
 ## 本版目标
 
-前两版已经确认 KernelLoader MOD 可以加载、`Main.Draw` / `GraphicsDevice.Present` 也能 Hook，但 ImGui 没有真正出现在最终画面里。因此 v0.1.4 停止在 MonoGame 管理层提交 UI，改为直接拦截 Android 最终 EGL 提交函数：
+v0.1.4 的 TEFKernel 探针已经确认整条 native 链路全部跑通：`SHADOWHOOK_INIT_OK → EGL_HOOK_REQUEST_OK → EGL_SWAP_SEEN → GL_CONTEXT_SEEN → IMGUI_READY → FRAME_RENDERED`。因此 v0.1.5 不再修改 Hook 架构，只修最后的 framebuffer 可见性问题。
+
+Dear ImGui 的 OpenGL renderer 会绘制到“当前绑定 framebuffer”。Terraria 在 `eglSwapBuffers()` 前可能仍保留离屏 FBO，导致 ImGui 实际渲染成功但像素留在离屏纹理中。v0.1.5 会在绘制前保存当前 FBO，临时绑定默认 framebuffer 0，再绘制 ImGui，完成后恢复原 FBO。
+
+仍直接拦截 Android 最终 EGL 提交函数：
 
 - `eglSwapBuffers`
 - `eglSwapBuffersWithDamageKHR`
@@ -27,9 +31,14 @@ Android EGL
 eglSwapBuffers / Damage variant
         ↓
 【ModControlCenter】
+保存当前 framebuffer
+绑定 framebuffer 0
+        ↓
 ImGui::NewFrame
 绘制 MOD 按钮 / 测试面板
 ImGui::Render
+        ↓
+恢复原 framebuffer
         ↓
 调用原始 EGL swap
         ↓
@@ -131,7 +140,7 @@ ShadowHook v1.0.10 源码静态编入 `libModControlCenter.android.arm64.so`，�
 
 ## TEFKernel 可见探针
 
-因为 TEFManager 导出的日志不会包含 MOD 私有目录里的 `imgui_runtime.log`，v0.1.4 另外增加了一套 **TEFKernel 可见探针**。它会故意查询不存在的 `MCCProbe.*` 类型，因此 runtime 日志会出现 `Type not found`，但这只是诊断标记，不是错误。
+因为 TEFManager 导出的日志不会包含 MOD 私有目录里的 `imgui_runtime.log`，v0.1.5 另外增加了一套 **TEFKernel 可见探针**。它会故意查询不存在的 `MCCProbe.*` 类型，因此 runtime 日志会出现 `Type not found`，但这只是诊断标记，不是错误。
 
 可能看到：
 
@@ -145,4 +154,13 @@ MCCProbe.IMGUI_READY
 MCCProbe.FRAME_RENDERED
 ```
 
-这些标记能精确告诉我们 UI 链路卡在哪一步。
+v0.1.5 还新增：
+
+```text
+MCCProbe.FBO_NONZERO_SEEN
+MCCProbe.FBO_ZERO_BOUND
+```
+
+如果出现 `FBO_NONZERO_SEEN`，就直接证明 Terraria 在 swap 前仍绑定着离屏 framebuffer；`FBO_ZERO_BOUND` 表示 MOD 已经成功切到默认 framebuffer 0。
+
+此外，`MOD` 按钮左侧会绘制一个约 14×14 px 的紫色原生 GLES 小方块。它不经过 ImGui，用来单独验证 framebuffer 0 是否真正显示在屏幕上。

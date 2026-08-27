@@ -60,7 +60,9 @@ enum NativeProbeFlag : unsigned int {
     PROBE_FRAME_RENDERED = 1u << 6,
     PROBE_SHADOWHOOK_INIT_FAIL = 1u << 7,
     PROBE_EGL_HOOK_REQUEST_FAIL = 1u << 8,
-    PROBE_EGL_HOOK_CALLBACK_FAIL = 1u << 9
+    PROBE_EGL_HOOK_CALLBACK_FAIL = 1u << 9,
+    PROBE_FBO_NONZERO_SEEN = 1u << 10,
+    PROBE_FBO_ZERO_BOUND = 1u << 11
 };
 
 bool g_imgui_ready = false;
@@ -157,6 +159,8 @@ void flush_native_probe_markers_on_game_thread() {
         {PROBE_GL_CONTEXT_SEEN, "GL_CONTEXT_SEEN"},
         {PROBE_IMGUI_READY, "IMGUI_READY"},
         {PROBE_FRAME_RENDERED, "FRAME_RENDERED"},
+        {PROBE_FBO_NONZERO_SEEN, "FBO_NONZERO_SEEN"},
+        {PROBE_FBO_ZERO_BOUND, "FBO_ZERO_BOUND"},
     };
 
     for (const auto& m : markers) {
@@ -255,6 +259,38 @@ bool init_imgui_on_egl_thread(EGLDisplay dpy, EGLSurface surface, int surface_w,
     g_native_probe_flags.fetch_or(PROBE_IMGUI_READY, std::memory_order_release);
     append_runtime_log("imgui: initialized successfully inside eglSwapBuffers");
     return true;
+}
+
+
+void draw_fb0_probe_marker(int surface_w, int surface_h) {
+    if (surface_w <= 0 || surface_h <= 0) return;
+
+    // Tiny magenta square just to the left of the MOD launcher. This is drawn
+    // with raw GLES2 only, so it tells us whether framebuffer 0 is actually
+    // visible even if ImGui itself still fails to appear.
+    const int size = 14;
+    const int x = std::clamp(
+        static_cast<int>(static_cast<float>(surface_w) * 0.555f) - 24,
+        2,
+        std::max(2, surface_w - size - 2)
+    );
+    const int top_y = 38;
+    const int y = std::clamp(surface_h - top_y - size, 0, std::max(0, surface_h - size));
+
+    GLboolean scissor_enabled = glIsEnabled(GL_SCISSOR_TEST);
+    GLint old_scissor[4] = {0, 0, 0, 0};
+    GLfloat old_clear[4] = {0.f, 0.f, 0.f, 0.f};
+    glGetIntegerv(GL_SCISSOR_BOX, old_scissor);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, old_clear);
+
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x, y, size, size);
+    glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glClearColor(old_clear[0], old_clear[1], old_clear[2], old_clear[3]);
+    glScissor(old_scissor[0], old_scissor[1], old_scissor[2], old_scissor[3]);
+    if (!scissor_enabled) glDisable(GL_SCISSOR_TEST);
 }
 
 void draw_overlay(int surface_w, int surface_h) {
@@ -359,7 +395,33 @@ void draw_overlay(int surface_w, int surface_h) {
     }
 
     ImGui::Render();
+
+    // IMPORTANT: ImGui's OpenGL backend renders into whichever framebuffer is
+    // currently bound. Terraria can leave an off-screen render target bound
+    // immediately before eglSwapBuffers(), which makes RenderDrawData() run
+    // successfully but keeps every pixel invisible on the EGL window.
+    GLint previous_fbo = 0;
+    GLboolean previous_color_mask[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE};
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous_fbo);
+    glGetBooleanv(GL_COLOR_WRITEMASK, previous_color_mask);
+
+    if (previous_fbo != 0) {
+        g_native_probe_flags.fetch_or(PROBE_FBO_NONZERO_SEEN, std::memory_order_release);
+        append_runtime_logf("render: framebuffer before overlay=%d; binding default framebuffer 0", previous_fbo);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    g_native_probe_flags.fetch_or(PROBE_FBO_ZERO_BOUND, std::memory_order_release);
+
+    draw_fb0_probe_marker(surface_w, surface_h);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    // Restore the framebuffer/color write mask Terraria left us so the hook is
+    // transparent to any work performed after this function returns.
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_fbo));
+    glColorMask(previous_color_mask[0], previous_color_mask[1], previous_color_mask[2], previous_color_mask[3]);
+
     g_render_count.fetch_add(1, std::memory_order_relaxed);
     g_native_probe_flags.fetch_or(PROBE_FRAME_RENDERED, std::memory_order_release);
 }
@@ -468,7 +530,7 @@ extern "C" void mod_control_center_init(kernel_mod_handle_t* handle) {
     if (!g_runtime_log_path.empty()) {
         FILE* f = std::fopen(g_runtime_log_path.c_str(), "w");
         if (f) {
-            std::fprintf(f, "MOD Control Center v0.1.4 - native eglSwapBuffers static-hook fix test\n");
+            std::fprintf(f, "MOD Control Center v0.1.5 - eglSwapBuffers framebuffer-0 visibility test\n");
             std::fclose(f);
         }
     }
