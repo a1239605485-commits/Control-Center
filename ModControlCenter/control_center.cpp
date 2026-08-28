@@ -8,6 +8,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <initializer_list>
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
@@ -617,6 +618,33 @@ EGLBoolean hooked_egl_swap_buffers_with_damage_ext(EGLDisplay dpy, EGLSurface su
     return result;
 }
 
+
+void* hook_egl_symbol_multi(
+    const char* symbol,
+    void* replacement,
+    void** original,
+    void** stub_out
+) {
+    const char* libs[] = {"libEGL.so", "libEGL.so.1", nullptr};
+    for (int i = 0; libs[i]; ++i) {
+        void* stub = shadowhook_hook_sym_name_callback(
+            libs[i],
+            symbol,
+            replacement,
+            original,
+            shadowhook_hooked_callback,
+            nullptr
+        );
+        if (stub) {
+            append_runtime_logf("shadowhook: %s hooked from %s stub=%p orig=%p", symbol, libs[i], stub, *original);
+            if (stub_out) *stub_out = stub;
+            return stub;
+        }
+    }
+    append_runtime_logf("shadowhook: %s not found in EGL libraries", symbol);
+    return nullptr;
+}
+
 void shadowhook_hooked_callback(
     int error_number,
     const char* lib_name,
@@ -703,57 +731,37 @@ extern "C" void mod_control_center_init(kernel_mod_handle_t* handle) {
     emit_tef_probe_marker("SHADOWHOOK_INIT_OK_IMMEDIATE");
     append_runtime_log("shadowhook: initialized in SHARED mode (v1.0.10 static path)");
 
-    g_swap_hook_stub = shadowhook_hook_sym_name_callback(
-        "libEGL.so",
+    g_swap_hook_stub = hook_egl_symbol_multi(
         "eglSwapBuffers",
         reinterpret_cast<void*>(hooked_egl_swap_buffers),
         reinterpret_cast<void**>(&g_original_egl_swap_buffers),
-        shadowhook_hooked_callback,
-        nullptr
+        &g_swap_hook_stub
     );
 
     if (!g_swap_hook_stub) {
         g_native_probe_flags.fetch_or(PROBE_EGL_HOOK_REQUEST_FAIL, std::memory_order_release);
         emit_tef_probe_marker("EGL_HOOK_REQUEST_FAIL_IMMEDIATE");
-        const int err = shadowhook_get_errno();
-        append_runtime_logf("shadowhook: eglSwapBuffers hook failed err=%d msg=%s", err, shadowhook_to_errmsg(err));
     } else {
         g_native_probe_flags.fetch_or(PROBE_EGL_HOOK_REQUEST_OK, std::memory_order_release);
         emit_tef_probe_marker("EGL_HOOK_REQUEST_OK_IMMEDIATE");
-        append_runtime_logf("shadowhook: eglSwapBuffers hook stub=%p orig=%p", g_swap_hook_stub, reinterpret_cast<void*>(g_original_egl_swap_buffers));
     }
 
-    // Some Android render paths use the damage variants directly. Hook them too.
-    // A thread-local recursion guard prevents double rendering if one variant calls another internally.
-    g_swap_damage_khr_hook_stub = shadowhook_hook_sym_name_callback(
-        "libEGL.so",
+    g_swap_damage_khr_hook_stub = hook_egl_symbol_multi(
         "eglSwapBuffersWithDamageKHR",
         reinterpret_cast<void*>(hooked_egl_swap_buffers_with_damage_khr),
         reinterpret_cast<void**>(&g_original_egl_swap_buffers_with_damage_khr),
-        shadowhook_hooked_callback,
-        nullptr
+        &g_swap_damage_khr_hook_stub
     );
-    if (!g_swap_damage_khr_hook_stub) {
-        const int err = shadowhook_get_errno();
-        append_runtime_logf("shadowhook: eglSwapBuffersWithDamageKHR hook unavailable err=%d msg=%s", err, shadowhook_to_errmsg(err));
-    } else {
-        append_runtime_logf("shadowhook: eglSwapBuffersWithDamageKHR stub=%p", g_swap_damage_khr_hook_stub);
-    }
 
-    g_swap_damage_ext_hook_stub = shadowhook_hook_sym_name_callback(
-        "libEGL.so",
+    g_swap_damage_ext_hook_stub = hook_egl_symbol_multi(
         "eglSwapBuffersWithDamageEXT",
         reinterpret_cast<void*>(hooked_egl_swap_buffers_with_damage_ext),
         reinterpret_cast<void**>(&g_original_egl_swap_buffers_with_damage_ext),
-        shadowhook_hooked_callback,
-        nullptr
+        &g_swap_damage_ext_hook_stub
     );
-    if (!g_swap_damage_ext_hook_stub) {
-        const int err = shadowhook_get_errno();
-        append_runtime_logf("shadowhook: eglSwapBuffersWithDamageEXT hook unavailable err=%d msg=%s", err, shadowhook_to_errmsg(err));
-    } else {
-        append_runtime_logf("shadowhook: eglSwapBuffersWithDamageEXT stub=%p", g_swap_damage_ext_hook_stub);
-    }
+
+    append_runtime_log("shadowhook: EGL swap hook compatibility pass finished");
+
 }
 
 extern "C" void mod_control_center_cleanup(void) {
