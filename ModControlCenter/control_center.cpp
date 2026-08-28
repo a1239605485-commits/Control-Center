@@ -23,6 +23,16 @@
 
 namespace {
 
+void shadowhook_hooked_callback(
+    int error_number,
+    const char* lib_name,
+    const char* sym_name,
+    void* sym_addr,
+    void* new_addr,
+    void* orig_addr,
+    void* arg
+);
+
 using EglSwapBuffersFn = EGLBoolean (*)(EGLDisplay, EGLSurface);
 using EglSwapBuffersWithDamageFn = EGLBoolean (*)(EGLDisplay, EGLSurface, EGLint*, EGLint);
 
